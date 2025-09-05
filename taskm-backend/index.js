@@ -63,22 +63,45 @@ async function initializeTypeORM() {
     // (like duplicate inserts) to avoid crashing on redeploys where some data already
     // exists. For serious errors we still stop the process.
     try {
+      // Try running migrations normally (each migration in its own transaction)
       const executed = await AppDataSource.runMigrations({ transaction: 'each' });
       console.log('✅ TypeORM migrations executed:', executed.map(m => m.name).join(', ') || 'none');
     } catch (mErr) {
       console.error('❌ Migration error:', mErr && mErr.stack ? mErr.stack : mErr);
-      // Known Postgres duplicate error code (unique violation)
-      const pgCode = mErr && (mErr.code || (mErr.driverError && mErr.driverError.code));
-      const benignCodes = ['23505', '23514', '42710']; // unique_violation, check_violation, duplicate_object
-      if (pgCode && benignCodes.includes(pgCode)) {
-        console.warn('⚠️ Non-fatal migration error detected (code:', pgCode, '). Continuing startup.');
-      } else if (String(mErr).toLowerCase().includes('already exists') || String(mErr).toLowerCase().includes('duplicate')) {
-        console.warn('⚠️ Non-fatal migration message (already exists/duplicate). Continuing startup.');
-      } else {
-        // Unknown/serious error — surface and exit so deploy fails loudly.
-        console.error('❌ Unknown migration error, aborting startup.');
-        console.error(mErr && mErr.stack ? mErr.stack : mErr);
-        process.exit(1);
+
+      // If a previous statement failed and left the transaction aborted, retry
+      // without wrapping everything in a transaction. This can recover from
+      // "current transaction is aborted" errors that otherwise block recording
+      // the migration in the migrations table.
+      let migrationHandled = false;
+      try {
+        const msg = String(mErr || '').toLowerCase();
+        if (msg.includes('current transaction is aborted')) {
+          console.warn("⚠️ Detected 'current transaction is aborted'. Retrying migrations with transaction: 'none'.");
+          const retried = await AppDataSource.runMigrations({ transaction: 'none' });
+          console.log('✅ Retry migrations executed:', retried.map(m => m.name).join(', ') || 'none');
+          migrationHandled = true;
+        }
+      } catch (retryErr) {
+        console.error('❌ Retry migration error:', retryErr && retryErr.stack ? retryErr.stack : retryErr);
+        // fall through to normal handling with retryErr as mErr
+        mErr = retryErr;
+      }
+
+      if (!migrationHandled) {
+        // Known Postgres duplicate error code (unique violation)
+        const pgCode = mErr && (mErr.code || (mErr.driverError && mErr.driverError.code));
+        const benignCodes = ['23505', '23514', '42710']; // unique_violation, check_violation, duplicate_object
+        if (pgCode && benignCodes.includes(pgCode)) {
+          console.warn('⚠️ Non-fatal migration error detected (code:', pgCode, '). Continuing startup.');
+        } else if (String(mErr).toLowerCase().includes('already exists') || String(mErr).toLowerCase().includes('duplicate')) {
+          console.warn('⚠️ Non-fatal migration message (already exists/duplicate). Continuing startup.');
+        } else {
+          // Unknown/serious error — surface and exit so deploy fails loudly.
+          console.error('❌ Unknown migration error, aborting startup.');
+          console.error(mErr && mErr.stack ? mErr.stack : mErr);
+          process.exit(1);
+        }
       }
     }
 
