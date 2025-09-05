@@ -37,6 +37,18 @@ validateDbConfig();
 const clientUrls = process.env.CLIENT_URL?.split(',') || ['http://localhost:5173'];
 app.use(cors({ origin: clientUrls, credentials: true }));
 
+// Log the DB host/port (without credentials) to help diagnose connection issues
+try {
+  if (process.env.DATABASE_URL) {
+    const parsed = new URL(process.env.DATABASE_URL);
+    console.log(`🔎 Attempting to connect to database host: ${parsed.hostname}:${parsed.port || '5432'}`);
+  } else {
+    console.log(`🔎 Attempting to connect to database host: ${process.env.PGHOST}:${process.env.PGPORT || '5432'}`);
+  }
+} catch (err) {
+  console.warn('⚠️ Could not parse DATABASE_URL for debug logging.');
+}
+
 app.use(express.json());
 app.use(cookieParser());
 
