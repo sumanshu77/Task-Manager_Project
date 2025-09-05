@@ -1,8 +1,13 @@
 require('dotenv').config();
 const express = require('express');
 const jwt = require('jsonwebtoken');
-// bcrypt replaced with bcryptjs for portability on Linux hosts
 const bcrypt = require('bcryptjs');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const axios = require('axios');
+
+const AppDataSource = require('./data-source');
+
 const authRoutes = require('./routes/auth');
 const taskRoutes = require('./routes/tasks');
 const attendanceRoutes = require('./routes/attendance');
@@ -12,61 +17,57 @@ const reportRoutes = require('./routes/report');
 const projectRoutes = require('./routes/projects');
 const userRoutes = require('./routes/users');
 const settingsRoutes = require('./routes/settings');
-const cors = require('cors');
-const cookieParser = require('cookie-parser');
-const axios = require('axios');
-
-const AppDataSource = require('./data-source'); // Import TypeORM Data Source
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Allow frontend origin from environment (set CLIENT_URL on Render)
-const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-app.use(cors({ origin: clientUrl, credentials: true }));
+// ✅ Allow frontend origin from env (Render will set CLIENT_URL)
+const clientUrls = process.env.CLIENT_URL?.split(',') || ['http://localhost:5173'];
+app.use(cors({ origin: clientUrls, credentials: true }));
+
 app.use(express.json());
 app.use(cookieParser());
 
-// Database initialization with TypeORM
+// ✅ TypeORM initialization
 async function initializeTypeORM() {
   try {
     await AppDataSource.initialize();
-    console.log('TypeORM Data Source initialized.');
-    await AppDataSource.runMigrations();
-    console.log('TypeORM migrations executed successfully.');
+    console.log('✅ TypeORM Data Source initialized.');
 
-    // Ensure required columns exist (safe for development)
+    await AppDataSource.runMigrations();
+    console.log('✅ TypeORM migrations executed.');
+
+    // Ensure optional columns exist (safe for dev)
     try {
       await AppDataSource.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(100) UNIQUE`);
       await AppDataSource.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token TEXT`);
       await AppDataSource.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id INTEGER`);
-      console.log('Ensured optional columns exist.');
+      console.log('✅ Optional columns ensured.');
     } catch (err) {
-      console.warn('Error ensuring optional columns:', err.message);
+      console.warn('⚠️ Optional column check failed:', err.message);
     }
 
-    // Seed common Indian holidays for the current year if not present
+    // ✅ Holiday seeding
     try {
       const Holiday = require('./entities/Holiday');
       const holidayRepo = AppDataSource.getRepository(Holiday);
       const year = new Date().getFullYear();
-      // Use Nager.Date public API to fetch holidays for India
+
       try {
         const res = await axios.get(`https://date.nager.at/api/v3/PublicHolidays/${year}/IN`);
-        const apiHolidays = res.data; // array of { date, localName, name, countryCode, fixed, global, counties, launchYear, types }
-        for (const h of apiHolidays) {
-          const date = h.date; // already in YYYY-MM-DD
+        for (const h of res.data) {
+          const date = h.date;
           const name = h.localName || h.name;
           const existing = await holidayRepo.findOneBy({ date });
           if (!existing) {
             const rec = holidayRepo.create({ date, name, type: 'national' });
             await holidayRepo.save(rec);
-            console.log('Seeded holiday from API:', name, date);
+            console.log('✅ Seeded holiday from API:', name, date);
           }
         }
       } catch (apiErr) {
-        console.warn('Failed to fetch holidays from API, falling back to manual list:', apiErr.message);
-        const holidays = [
+        console.warn('⚠️ API holiday fetch failed. Using fallback.');
+        const fallback = [
           { date: `${year}-01-14`, name: 'Makar Sankranti', type: 'national' },
           { date: `${year}-01-26`, name: 'Republic Day', type: 'national' },
           { date: `${year}-05-01`, name: 'Labor Day', type: 'national' },
@@ -74,37 +75,35 @@ async function initializeTypeORM() {
           { date: `${year}-10-02`, name: 'Gandhi Jayanti', type: 'national' },
           { date: `${year}-12-25`, name: 'Christmas', type: 'national' },
         ];
-        for (const h of holidays) {
+        for (const h of fallback) {
           const existing = await holidayRepo.findOneBy({ date: h.date });
           if (!existing) {
             const rec = holidayRepo.create(h);
             await holidayRepo.save(rec);
-            console.log('Seeded fallback holiday:', h.name, h.date);
+            console.log('✅ Seeded fallback holiday:', h.name, h.date);
           }
         }
       }
     } catch (err) {
-      console.warn('Error seeding holidays:', err.message);
+      console.warn('⚠️ Error seeding holidays:', err.message);
     }
 
-    // Normalize holiday dates to date-only and create unique index to avoid duplicates
+    // ✅ Normalize holiday dates
     try {
-      // convert any timestamp columns to date-only
       await AppDataSource.query("UPDATE holidays SET date = (to_char(date, 'YYYY-MM-DD'))::date WHERE date IS NOT NULL");
-      // create unique index on date and lower(name)
       await AppDataSource.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_holidays_date_name ON holidays ((date), lower(name));");
-      console.log('Normalized holiday dates and ensured unique index.');
+      console.log('✅ Normalized holiday dates and created index.');
     } catch (err) {
-      console.warn('Error normalizing holidays or creating index:', err.message);
+      console.warn('⚠️ Error normalizing holiday dates:', err.message);
     }
 
   } catch (err) {
-    console.error('Error initializing TypeORM Data Source or running migrations:', err.message);
+    console.error('❌ Failed to initialize TypeORM:', err.message);
     process.exit(1);
   }
 }
 
-// Routes
+// ✅ Routes
 app.use('/api', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/attendance', attendanceRoutes);
@@ -115,14 +114,14 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/settings', settingsRoutes);
 
-// Health check
+// ✅ Health check
 app.get('/', (req, res) => {
-  res.send('Task Manager Backend is running');
+  res.send('✅ Task Manager Backend is running');
 });
 
-// Start server after TypeORM initialization and migrations
+// ✅ Start server
 initializeTypeORM().then(() => {
   app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`🚀 Server running on port ${port}`);
   });
 });

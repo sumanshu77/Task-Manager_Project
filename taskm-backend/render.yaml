@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: taskm-backend
+    runtime: node
+    plan: free
+    branch: main
+    rootDir: taskm-backend
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        value: YOUR_RENDER_DB_URL_HERE
+      - key: CLIENT_URL
+        value: https://taskm-frontend.onrender.com
+      - key: JWT_SECRET
+        value: sumanshu@123
+      - key: JWT_REFRESH_SECRET
+        value: refresh_token
+      - key: CALENDARIFIC_KEY
+        value: aa9dc110aa712sd3a9fa2a3dwb6c01d4c875950dc32vs
+      - key: HOLIDAYS_COUNTRY
+        value: IN
+      - key: HOLIDAYS_LOCATION
+        value: IN-DL
+
+  - type: web
+    name: taskm-frontend
+    runtime: static
+    plan: free
+    branch: main
+    rootDir: taskm-frontend
+    buildCommand: npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://taskm-backend.onrender.com
