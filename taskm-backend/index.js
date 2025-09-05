@@ -21,7 +21,9 @@ const AppDataSource = require('./data-source'); // Import TypeORM Data Source
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+// Allow frontend origin from environment (set CLIENT_URL on Render)
+const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+app.use(cors({ origin: clientUrl, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
