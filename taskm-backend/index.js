@@ -21,6 +21,18 @@ const settingsRoutes = require('./routes/settings');
 const app = express();
 const port = process.env.PORT || 5000;
 
+// Validate DB config early and provide a clear error if missing
+function validateDbConfig() {
+  const hasDatabaseUrl = !!process.env.DATABASE_URL;
+  const hasPgVars = process.env.PGHOST && process.env.PGUSER && process.env.PGPASSWORD && process.env.PGDATABASE;
+  if (!hasDatabaseUrl && !hasPgVars) {
+    console.error('❌ Missing database configuration. Set either DATABASE_URL or PGHOST/PGUSER/PGPASSWORD/PGDATABASE env vars.');
+    // exit so Render shows a clear failure reason instead of an opaque TypeORM error
+    process.exit(1);
+  }
+}
+validateDbConfig();
+
 // ✅ Allow frontend origin from env (Render will set CLIENT_URL)
 const clientUrls = process.env.CLIENT_URL?.split(',') || ['http://localhost:5173'];
 app.use(cors({ origin: clientUrls, credentials: true }));
@@ -98,7 +110,11 @@ async function initializeTypeORM() {
     }
 
   } catch (err) {
-    console.error('❌ Failed to initialize TypeORM:', err.message);
+    // Provide richer debugging output for deploy logs
+    const usingDatabaseUrl = !!process.env.DATABASE_URL;
+    console.error('❌ Failed to initialize TypeORM.');
+    console.error('Database config source:', usingDatabaseUrl ? 'DATABASE_URL' : 'PGHOST/PG* env vars');
+    console.error(err && err.stack ? err.stack : err);
     process.exit(1);
   }
 }
