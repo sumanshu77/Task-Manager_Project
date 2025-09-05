@@ -114,12 +114,7 @@ export const Login: React.FC = () => {
             </p>
           </div>
 
-          <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-            <h4 className="font-semibold text-gray-700 mb-2">Demo Credentials:</h4>
-            <p className="text-sm text-gray-600">Admin: admin@company.com</p>
-            <p className="text-sm text-gray-600">User: user@company.com</p>
-            <p className="text-sm text-gray-600">Password: password</p>
-          </div>
+          {/* Demo credentials removed */}
         </div>
       </div>
     </div>

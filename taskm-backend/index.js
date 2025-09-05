@@ -1,7 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
+// bcrypt replaced with bcryptjs for portability on Linux hosts
+const bcrypt = require('bcryptjs');
 const authRoutes = require('./routes/auth');
 const taskRoutes = require('./routes/tasks');
 const attendanceRoutes = require('./routes/attendance');
