@@ -9,7 +9,7 @@ services:
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
-        value: YOUR_RENDER_DB_URL_HERE
+        value: postgresql://taskuser:Zkf87Eo183k2Z6bpoPcOexVBpU2AhHfV@dpg-d2tknsbe5dus73duljhg-a.oregon-postgres.render.com/taskmanager_yqan
       - key: CLIENT_URL
         value: https://taskm-frontend.onrender.com
       - key: JWT_SECRET
