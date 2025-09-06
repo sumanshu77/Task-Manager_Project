@@ -8,9 +8,9 @@
   "main": "index.js",
   "scripts": {
     "start": "npm run migration:run && node index.js",
-    "typeorm": "typeorm",
+    "typeorm": "typeorm -d ./data-source.js",
     "migration:generate": "typeorm -d ./data-source.js migration:generate",
-    "migration:run": "typeorm -d ./data-source.js migration:run || true",
+    "migration:run": "typeorm -d ./data-source.js migration:run",
     "migration:revert": "typeorm -d ./data-source.js migration:revert",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

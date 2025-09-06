@@ -42,8 +42,12 @@ const AppDataSource = new DataSource({
     NotificationSchema,
     ProjectMemberSchema,
   ],
-  migrations: [path.join(__dirname, 'migrations/**/*.js')],
+  // Only load compiled JS migrations from the migrations folder to avoid
+  // attempting to import TypeScript files at runtime in CommonJS.
+  migrations: [path.join(__dirname, 'migrations/*.js')],
   subscribers: [],
 });
 
+// Export for both require() and TypeORM CLI expectations
 module.exports = AppDataSource;
+module.exports.dataSource = AppDataSource;

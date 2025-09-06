@@ -54,7 +54,10 @@ async function initializeTypeORM() {
     await AppDataSource.initialize();
     console.log('✅ DB connected');
 
-    const executed = await AppDataSource.runMigrations({ transaction: 'each' });
+    // Run migrations without wrapping the entire batch in a single transaction.
+    // This prevents one failing statement from aborting all remaining migrations
+    // which is helpful during first-time schema creation on new databases.
+    const executed = await AppDataSource.runMigrations({ transaction: 'none' });
     console.log('✅ Migrations:', executed.map(m => m.name).join(', ') || 'None');
 
     // Optional Columns (Move this to migration for production)
