@@ -8,10 +8,10 @@
   "main": "index.js",
   "scripts": {
     "start": "npm run migration:run && node index.js",
-    "typeorm": "typeorm -d ./data-source.js",
-    "migration:generate": "typeorm -d ./data-source.js migration:generate",
-    "migration:run": "typeorm -d ./data-source.js migration:run",
-    "migration:revert": "typeorm -d ./data-source.js migration:revert",
+    "typeorm": "node ./node_modules/typeorm/cli.js",
+    "migration:generate": "npm run typeorm -- -d ./data-source.js migration:generate",
+    "migration:run": "npm run typeorm -- -d ./data-source.js migration:run",
+    "migration:revert": "npm run typeorm -- -d ./data-source.js migration:revert",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
