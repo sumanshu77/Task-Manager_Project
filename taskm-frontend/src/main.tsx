@@ -4,16 +4,14 @@ import axios from 'axios';
 import App from './App.tsx';
 import './index.css';
 
-// ✅ Read env vars from Vite and sanitize
-const env = import.meta.env as Record<string, string | undefined>;
+// ✅ Read env vars
+const env = import.meta.env;
 
-const DEFAULT_API_URL = 'https://taskm-backend.onrender.com';
+const DEFAULT_API_URL = ' http://localhost:5000'; // ✅ local backend (not 5173, which is frontend)
 const rawUrl =
-  env.VITE_API_URL ||
-  env.REACT_APP_API_URL ||  // fallback if user used CRA-style vars
-  DEFAULT_API_URL;
+  env.VITE_API_URL || env.REACT_APP_API_URL || DEFAULT_API_URL;
 
-// ✅ Sanitize URL: remove trailing semicolons or slashes
+// ✅ Sanitize the URL
 const API_URL = rawUrl.replace(/;+/g, '').trim().replace(/\/+$/g, '');
 axios.defaults.baseURL = API_URL;
 
