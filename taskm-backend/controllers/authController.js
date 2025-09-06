@@ -1,4 +1,4 @@
-
+// authController.js
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const AppDataSource = require('../data-source');
@@ -6,19 +6,25 @@ const User = require('../entities/User');
 
 const ACCESS_EXPIRY = '15m';
 const REFRESH_EXPIRY = '7d';
-const REFRESH_SECRET = process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET;
+const REFRESH_SECRET = process.env.REFRESH_TOKEN_SECRET || process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
 
-const generateAccessToken = (user) => jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar }, process.env.JWT_SECRET, { expiresIn: ACCESS_EXPIRY });
-const generateRefreshToken = (user) => jwt.sign({ id: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRY });
+const generateAccessToken = (user) =>
+  jwt.sign(
+    { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar },
+    process.env.JWT_SECRET,
+    { expiresIn: ACCESS_EXPIRY }
+  );
+
+const generateRefreshToken = (user) =>
+  jwt.sign({ id: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRY });
 
 function setRefreshCookie(res, token) {
-  const cookieOptions = {
+  res.cookie('refreshToken', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-  };
-  res.cookie('refreshToken', token, cookieOptions);
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
 }
 
 exports.register = async (req, res) => {
@@ -28,7 +34,6 @@ exports.register = async (req, res) => {
   const userRepository = AppDataSource.getRepository(User);
 
   try {
-    // check email and username uniqueness
     const existingByEmail = await userRepository.findOneBy({ email });
     if (existingByEmail) return res.status(409).json({ message: 'Email already exists' });
 
@@ -38,6 +43,7 @@ exports.register = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+
     const newUser = userRepository.create({
       name,
       username: username || null,
@@ -48,21 +54,30 @@ exports.register = async (req, res) => {
     });
     await userRepository.save(newUser);
 
-    // generate tokens
     const accessToken = generateAccessToken(newUser);
     const refreshToken = generateRefreshToken(newUser);
 
-    // hash refresh token and store hash in DB
+    // Store hashed refresh token
     const hashedRefresh = await bcrypt.hash(refreshToken, 10);
     newUser.refreshToken = hashedRefresh;
     await userRepository.save(newUser);
 
-    // set refresh token as httpOnly cookie
     setRefreshCookie(res, refreshToken);
 
-    // In development return refresh token so frontend can fallback if cookies are blocked by SameSite policies
-    const resp = { token: accessToken, user: { id: newUser.id, email: newUser.email, name: newUser.name, username: newUser.username, role: newUser.role, avatar: newUser.avatar } };
+    const resp = {
+      token: accessToken,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        username: newUser.username,
+        role: newUser.role,
+        avatar: newUser.avatar,
+      },
+    };
+
     if (process.env.NODE_ENV !== 'production') resp.refreshToken = refreshToken;
+
     res.status(201).json(resp);
   } catch (err) {
     console.error('Error during registration:', err);
@@ -71,7 +86,7 @@ exports.register = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
-  const { identifier, password } = req.body; // identifier can be email or username
+  const { identifier, password } = req.body;
   if (!identifier || !password) return res.status(400).json({ message: 'Identifier and password required' });
 
   const userRepository = AppDataSource.getRepository(User);
@@ -92,15 +107,26 @@ exports.login = async (req, res) => {
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
-    // hash refresh token and store hash in DB
     const hashedRefresh = await bcrypt.hash(refreshToken, 10);
     user.refreshToken = hashedRefresh;
     await userRepository.save(user);
 
-    // set refresh token as httpOnly cookie
     setRefreshCookie(res, refreshToken);
-    const resp = { token: accessToken, user: { id: user.id, email: user.email, name: user.name, username: user.username, role: user.role, avatar: user.avatar } };
+
+    const resp = {
+      token: accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        avatar: user.avatar,
+      },
+    };
+
     if (process.env.NODE_ENV !== 'production') resp.refreshToken = refreshToken;
+
     res.json(resp);
   } catch (err) {
     console.error('Error during login:', err);
@@ -108,9 +134,7 @@ exports.login = async (req, res) => {
   }
 };
 
-// Refresh token endpoint
 exports.refresh = async (req, res) => {
-  // prefer cookie, fallback to body
   const token = req.cookies?.refreshToken || req.body?.token;
   if (!token) return res.status(401).json({ message: 'Refresh token required' });
 
@@ -120,32 +144,39 @@ exports.refresh = async (req, res) => {
     const user = await userRepository.findOneBy({ id: payload.id });
     if (!user) return res.status(403).json({ message: 'Invalid refresh token' });
 
-    // compare provided token with hashed token in DB
     const valid = user.refreshToken ? await bcrypt.compare(token, user.refreshToken) : false;
     if (!valid) return res.status(403).json({ message: 'Invalid refresh token' });
 
-    // rotate refresh token
     const newRefreshToken = generateRefreshToken(user);
     const newHashed = await bcrypt.hash(newRefreshToken, 10);
     user.refreshToken = newHashed;
     await userRepository.save(user);
 
-    // set new refresh cookie
     setRefreshCookie(res, newRefreshToken);
 
     const accessToken = generateAccessToken(user);
-    res.json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, username: user.username, role: user.role, avatar: user.avatar } });
+
+    res.json({
+      token: accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        avatar: user.avatar,
+      },
+    });
   } catch (err) {
     console.error('Error refreshing token:', err);
     res.status(403).json({ message: 'Invalid refresh token' });
   }
 };
 
-// Logout endpoint
 exports.logout = async (req, res) => {
-  // prefer cookie, fallback to body
   const token = req.cookies?.refreshToken || req.body?.token;
   if (!token) return res.status(400).json({ message: 'Refresh token required' });
+
   try {
     const payload = jwt.verify(token, REFRESH_SECRET);
     const userRepository = AppDataSource.getRepository(User);
@@ -154,7 +185,11 @@ exports.logout = async (req, res) => {
       user.refreshToken = null;
       await userRepository.save(user);
     }
-    res.clearCookie('refreshToken');
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
     res.json({ message: 'Logged out' });
   } catch (err) {
     console.error('Error during logout:', err);
