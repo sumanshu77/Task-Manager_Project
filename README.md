@@ -1,1 +1,1 @@
-https://taskm-frontend.vercel.app/dashboard
+taskm-frontend.vercel.app
