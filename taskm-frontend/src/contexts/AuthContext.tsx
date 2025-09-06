@@ -1,6 +1,14 @@
 import React, { createContext, useReducer, useEffect } from 'react';
 import axios from 'axios';
 
+// Helper that races a promise with a timeout so network hangs don't block initialization
+const withTimeout = <T,>(p: Promise<T>, ms = 5000): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then((v) => { clearTimeout(timer); resolve(v); }).catch((e) => { clearTimeout(timer); reject(e); });
+  });
+};
+
 interface User {
   id: string;
   email: string;
@@ -80,7 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error.response && error.response.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
           try {
-            const refreshRes = await axios.post('/api/refresh', {}, { withCredentials: true, timeout: 5000 }); // refresh token is read from cookie by backend
+            const refreshRes = await withTimeout(axios.post('/api/refresh', {}, { withCredentials: true, timeout: 5000 }), 3000); // refresh token is read from cookie by backend
             const newToken = refreshRes.data.token;
             localStorage.setItem('token', newToken);
             axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -91,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const storedRefresh = localStorage.getItem('refreshToken');
             if (storedRefresh) {
               try {
-                const r2 = await axios.post('/api/refresh', { token: storedRefresh }, { withCredentials: true, timeout: 5000 });
+                const r2 = await withTimeout(axios.post('/api/refresh', { token: storedRefresh }, { withCredentials: true, timeout: 5000 }), 3000);
                 const t2 = r2.data.token;
                 if (t2) {
                   localStorage.setItem('token', t2);
@@ -118,9 +126,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Try to restore session on mount using refresh token (HTTP-only cookie)
   useEffect(() => {
+    let finished = false;
     const restoreSession = async () => {
       try {
-        const res = await axios.post('/api/refresh', {}, { withCredentials: true, timeout: 5000 });
+        const res = await withTimeout(axios.post('/api/refresh', {}, { withCredentials: true, timeout: 5000 }), 3000);
         const { token, user } = res.data;
         if (token && user) {
           localStorage.setItem('token', token);
@@ -135,7 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           try {
-            const notRes = await axios.get('/api/notifications', { withCredentials: true, timeout: 5000 });
+            const notRes = await withTimeout(axios.get('/api/notifications', { withCredentials: true, timeout: 5000 }), 3000);
             const notifs = notRes.data || [];
             for (const n of notifs) {
               if (!n.read) {
@@ -154,12 +163,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const storedRefresh = localStorage.getItem('refreshToken');
         if (storedRefresh) {
           try {
-            const res2 = await axios.post('/api/refresh', { token: storedRefresh }, { withCredentials: true, timeout: 5000 });
+            const res2 = await withTimeout(axios.post('/api/refresh', { token: storedRefresh }, { withCredentials: true, timeout: 5000 }), 3000);
             const { token: t2, user: u2, refreshToken: newRefresh } = res2.data;
             if (t2 && u2) {
               localStorage.setItem('token', t2);
               if (newRefresh) localStorage.setItem('refreshToken', newRefresh);
               dispatch({ type: 'AUTH_SUCCESS', payload: { user: u2, token: t2 } });
+              finished = true;
               return;
             }
           } catch (e) {
@@ -169,8 +179,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.debug('No session restore:', err);
         dispatch({ type: 'LOGOUT' });
       }
+      finished = true;
     };
-    restoreSession();
+
+    // safety timer: if restoreSession doesn't complete within X ms, force LOGOUT so UI progresses
+    const safety = setTimeout(() => {
+      if (!finished) {
+        console.warn('Auth restore timed out, forcing logout to allow UI to render');
+        dispatch({ type: 'LOGOUT' });
+      }
+    }, 4000);
+
+    restoreSession().catch((e) => {
+      // already handled inside restoreSession; guard to avoid unhandled rejections
+      console.debug('restoreSession error (caught higher):', e);
+    }).finally(() => clearTimeout(safety));
+
+    return () => {
+      clearTimeout(safety);
+    };
     // run only once on mount
   }, []);
 
