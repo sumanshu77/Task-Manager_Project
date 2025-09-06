@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -58,7 +57,7 @@ async function initializeTypeORM() {
     const executed = await AppDataSource.runMigrations({ transaction: 'each' });
     console.log('✅ Migrations:', executed.map(m => m.name).join(', ') || 'None');
 
-    // Add optional columns
+    // Optional Columns (Move this to migration for production)
     await AppDataSource.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(100) UNIQUE`);
     await AppDataSource.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token TEXT`);
     await AppDataSource.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id INTEGER`);

@@ -30,7 +30,7 @@ const AppDataSource = new DataSource({
         database: process.env.PGDATABASE,
       }),
   synchronize: false, // Use migrations in production
-  logging: false,
+  logging: true, // Enable logging to debug the queries
   entities: [
     UserSchema,
     TaskSchema,
